@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
+use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::fs;
 use std::fs::{File, OpenOptions};
@@ -16,7 +17,7 @@ use thiserror::Error;
 
 const HEADER: &[u8] = b"OBCF\x00\x03";
 const FOOTER: &[u8] = b"END\x00";
-const SUFFIX: &str = ".lz4";
+const EXTENSION: &str = "zst";
 
 #[derive(Error, Debug)]
 pub enum CacheError {
@@ -34,7 +35,7 @@ pub struct FileCache {
     cache_mode: CacheMode,
     cache_dir: PathBuf,
     cache_limit: u64,
-    cache_compression_level: u32,
+    cache_compression_level: i32,
 }
 
 struct CacheFile {
@@ -95,7 +96,7 @@ impl FileCache {
         let path = self
             .cache_dir
             .join(&hash[0..2])
-            .join(hash[2..].to_string() + SUFFIX);
+            .join(hash[2..].to_string() + "." + EXTENSION);
 
         if self.cache_mode != CacheMode::None {
             // Try to read data from cache.
@@ -137,6 +138,10 @@ impl FileCache {
 
         // Attention, reverse order. We want to keep newer files
         for item in files.iter().rev() {
+            if item.path.extension() != Some(OsStr::new(EXTENSION)) {
+                fs::remove_file(&item.path)?;
+                continue;
+            }
             cache_size += item.size;
             if cache_size > self.cache_limit {
                 fs::remove_file(&item.path)?;
@@ -157,7 +162,7 @@ impl FileCache {
             .open(PathBuf::from(path))?;
         file.write_all(&[4])?;
         file.rewind()?;
-        let mut stream = lz4::Decoder::new(Counter::reader(file))?;
+        let mut stream = zstd::Decoder::new(Counter::reader(file))?;
         if read_exact(&mut stream, HEADER.len())? != HEADER {
             return Err(CacheError::InvalidHeader(path.clone()).into());
         }
@@ -186,7 +191,7 @@ impl FileCache {
         if stream.read(&mut eof)? != 0 {
             return Err(CacheError::InvalidFooter(path.clone()).into());
         }
-        statistic.add_hit(stream.finish().0.len());
+        statistic.add_hit(stream.get_ref().get_ref().len());
         Ok(output)
     }
 
@@ -203,9 +208,7 @@ impl FileCache {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
-        let mut stream = lz4::EncoderBuilder::new()
-            .level(self.cache_compression_level)
-            .build(Counter::writer(File::create(path)?))?;
+        let mut stream = zstd::Encoder::new(Counter::writer(File::create(path)?), self.cache_compression_level)?;
         stream.write_all(HEADER)?;
         write_usize(&mut stream, paths.len())?;
         for path in paths {
@@ -214,9 +217,8 @@ impl FileCache {
         }
         write_output(&mut stream, output)?;
         stream.write_all(FOOTER)?;
-        let (writer, result) = stream.finish();
-        statistic.add_miss(writer.len());
-        Ok(result?)
+        statistic.add_miss(stream.finish()?.len());
+        Ok(())
     }
 }
 

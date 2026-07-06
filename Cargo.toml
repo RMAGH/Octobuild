@@ -74,7 +74,7 @@ ipc = { git = "https://github.com/octobuild/ipc-rs" }
 libc = "0.2"
 local-encoding-ng = "0.1"
 log = "0.4"
-lz4 = "1"
+zstd = "0.13"
 num_cpus = "1"
 os_str_bytes = { version = "7", features = ["conversions"] }
 path-absolutize = "3"
