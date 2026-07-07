@@ -21,3 +21,6 @@
 
 # Profiler
 perf.data*
+
+# Cache
+/cache/
