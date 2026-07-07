@@ -44,7 +44,7 @@ impl Default for Config {
         Self {
             cache: project_dirs().cache_dir().into(),
             cache_mode: CacheMode::ReadWrite,
-            cache_limit_mb: 64 * 1024,
+            cache_limit_mb: 75 * 1024,
             cache_compression_level: 3,
             coordinator: None,
             coordinator_bind: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 3000)),
